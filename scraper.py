@@ -70,6 +70,6 @@ def is_valid(url: str) -> bool:
             return False
         
         return True
-except TypeError:
-    print("TypeError for ", url)
-    raise
+    except TypeError:
+        print("TypeError for ", url)
+        raise
