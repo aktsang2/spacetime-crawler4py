@@ -1,11 +1,11 @@
 import re
 from urllib.parse import urlparse
 
-def scraper(url, resp):
+def scraper(url: str, resp: utils.response.Response) -> list:
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
-def extract_next_links(url, resp):
+def extract_next_links(url: str, resp: utils.response.Response):
     # Implementation required.
     # url: the URL that was used to get the page
     # resp.url: the actual url of the page
@@ -17,7 +17,7 @@ def extract_next_links(url, resp):
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
     return list()
 
-def is_valid(url):
+def is_valid(url: str):
     # Decide whether to crawl this url or not. 
     # If you decide to crawl it, return True; otherwise return False.
     # There are already some conditions that return False.
