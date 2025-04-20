@@ -1,44 +1,53 @@
 import re
 from urllib.parse import urlparse, urljoin
-import chardet
+import chardet  # Make sure to install this package: pip install chardet
 
-def scraper(url: str, resp: "utils.response.Response") -> list:
+def scraper(url: str, resp: utils.response.Response) -> list:
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
-def extract_next_links(url: str, resp: "utils.response.Response") -> list:
+def extract_next_links(url: str, resp: utils.response.Response) -> list:
     """
-    Extract URLs from the page content if the response status is 200.
-    For non-200 responses, an empty list is returned.
+    Extract URLs from the page content if the response status is 200 and a valid raw_response exists.
+    For non-200 responses or if raw_response is missing, an empty list is returned.
     """
+    # Only process pages that were successfully fetched.
     if resp.status != 200:
         return []
     
+    # Check if raw_response exists and has the 'content' attribute.
+    if not resp.raw_response or not hasattr(resp.raw_response, "content"):
+        print("Warning: No raw_response content available.")
+        return []
+    
+    page_content = resp.raw_response.content
+    if not page_content:
+        return []
+    
+    # Detect encoding using chardet.
+    detected = chardet.detect(page_content)
+    encoding = detected.get('encoding')
+    if encoding is None:
+        encoding = 'utf-8'
+    
+    try:
+        decoded_content = page_content.decode(encoding, errors='replace')
+    except Exception as e:
+        print(f"Decoding error: {e}")
+        return []
+    
+    # Use BeautifulSoup to parse the HTML.
     try:
         from bs4 import BeautifulSoup
     except ImportError:
         print("Error: BeautifulSoup is required to parse HTML content.")
         return []
-
-    page_content = resp.raw_response.content
-    if not page_content:
-        return []
     
-    # Detect the encoding using chardet
-    detected = chardet.detect(page_content)
-    encoding = detected.get("encoding", "utf-8")  # Fallback to UTF-8 if undetermined
-
-    try:
-        decoded_content = page_content.decode(encoding, errors = "replace")
-    except Exception as e:
-        print(f"Decoding error: {e}")
-        return []
-
-    # Parse the HTML with BeautifulSoup; you might also use "from_encoding" parameter if known
     soup = BeautifulSoup(decoded_content, "html.parser")
-    
     links = []
-    for tag in soup.find_all("a", href = True):
+    
+    # Find all anchor tags with an href attribute.
+    for tag in soup.find_all("a", href=True):
         href = tag.get("href")
         absolute_url = urljoin(url, href)
         links.append(absolute_url)
@@ -47,9 +56,8 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
 
 def is_valid(url: str) -> bool:
     """
-    Determine whether the URL should be crawled.
-    Performs checks for a valid scheme and filters out
-    URLs that point to files not intended for crawling.
+    Determine whether the URL should be crawled,
+    checking for allowed schemes and filtering out undesired file types.
     """
     try:
         parsed = urlparse(url)
@@ -71,5 +79,5 @@ def is_valid(url: str) -> bool:
         
         return True
     except TypeError:
-        print("TypeError for ", url)
+        print("TypeError encountered for URL:", url)
         raise
