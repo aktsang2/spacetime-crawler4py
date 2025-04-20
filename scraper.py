@@ -1,6 +1,6 @@
 import re
 from urllib.parse import urlparse, urljoin
-import chardet  # Make sure to install this package: pip install chardet
+import chardet
 
 def scraper(url: str, resp: "utils.response.Response") -> list:
     links = extract_next_links(url, resp)
