@@ -2,14 +2,14 @@ import re
 from urllib.parse import urlparse, urljoin
 import chardet  # Make sure to install this package: pip install chardet
 
-def scraper(url: str, resp: utils.response.Response) -> list:
+def scraper(url: str, resp: "utils.response.Response") -> list:
     links = extract_next_links(url, resp)
     return [link for link in links if is_valid(link)]
 
-def extract_next_links(url: str, resp: utils.response.Response) -> list:
+def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     """
-    Extract URLs from the page content if the response status is 200 and a valid raw_response exists.
-    For non-200 responses or if raw_response is missing, an empty list is returned.
+    Extract URLs from the page content if the response status is 200 and a valid raw response exists.
+    An empty list is returned for non-200 responses or if raw_response is missing.
     """
     # Only process pages that were successfully fetched.
     if resp.status != 200:
