@@ -26,9 +26,9 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     
     # Detect encoding using chardet.
     detected = chardet.detect(page_content)
-    encoding = detected.get('encoding')
+    encoding = detected.get("encoding")
     if encoding is None:
-        encoding = 'utf-8'
+        encoding = "utf-8"
     
     try:
         decoded_content = page_content.decode(encoding, errors='replace')
@@ -47,7 +47,7 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     links = []
     
     # Find all anchor tags with an href attribute.
-    for tag in soup.find_all("a", href=True):
+    for tag in soup.find_all("a", href = True):
         href = tag.get("href")
         absolute_url = urljoin(url, href)
         links.append(absolute_url)
