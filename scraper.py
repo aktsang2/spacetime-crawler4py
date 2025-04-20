@@ -31,7 +31,7 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
         encoding = "utf-8"
     
     try:
-        decoded_content = page_content.decode(encoding, errors='replace')
+        decoded_content = page_content.decode(encoding, errors = "replace")
     except Exception as e:
         print(f"Decoding error: {e}")
         return []
