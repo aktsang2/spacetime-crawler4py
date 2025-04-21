@@ -50,9 +50,9 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     # --- Check File Size (if header available) ---
     if hasattr(resp.raw_response, "headers"):
         headers = resp.raw_response.headers
-        if 'Content-Length' in headers:
+        if "Content-Length" in headers:
             try:
-                file_size = int(headers['Content-Length'])
+                file_size = int(headers["Content-Length"])
                 if file_size > MAX_FILE_SIZE:
                     print(f"Skipping large file: {file_size} bytes")
                     return []
@@ -66,12 +66,12 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     
     # --- Detect & Apply Encoding ---
     detected = chardet.detect(page_content)
-    encoding = detected.get('encoding')
+    encoding = detected.get("encoding")
     if encoding is None:
-        encoding = 'utf-8'
+        encoding = "utf-8"
     
     try:
-        decoded_content = page_content.decode(encoding, errors='replace')
+        decoded_content = page_content.decode(encoding, errors = "replace")
     except Exception as e:
         print(f"Decoding error: {e}")
         return []
@@ -86,7 +86,7 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     
     # --- Low-Information / Dead URLs Detection ---
     # Extract visible text from the page.
-    text_content = soup.get_text(separator=" ", strip=True)
+    text_content = soup.get_text(separator = " ", strip = True)
     if len(text_content) < MIN_TEXT_LENGTH:
         print("Page discarded due to low textual content")
         return []
@@ -123,7 +123,7 @@ def is_valid(url: str) -> bool:
 
         # --- Infinite Trap Checks ---
         # For example, detect pagination like '/page/NUMBER'
-        page_match = re.search(r'/page/(\d+)', parsed.path.lower())
+        page_match = re.search(r"/page/(\d+)", parsed.path.lower())
         if page_match:
             page_number = int(page_match.group(1))
             if page_number > 50:  # Adjust this threshold as needed
