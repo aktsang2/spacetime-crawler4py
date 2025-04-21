@@ -93,7 +93,7 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     
     # --- Duplicate/Similar Pages Detection ---
     # Compute a simple MD5 fingerprint of the text.
-    fingerprint = hashlib.md5(text_content.encode('utf-8')).hexdigest()
+    fingerprint = hashlib.md5(text_content.encode("utf-8")).hexdigest()
     if fingerprint in seen_page_fingerprints:
         print("Duplicate or similar page detected; skipping.")
         return []
@@ -102,7 +102,7 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     
     # --- Extraction of Hyperlinks ---
     links = []
-    for tag in soup.find_all("a", href=True):
+    for tag in soup.find_all("a", href = True):
         href = tag.get("href")
         absolute_url = urljoin(url, href)
         links.append(absolute_url)
