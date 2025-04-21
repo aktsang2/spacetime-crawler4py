@@ -147,4 +147,3 @@ def is_valid(url: str) -> bool:
     except Exception as e:
         print("Error in is_valid:", e)
         return False
-
