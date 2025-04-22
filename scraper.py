@@ -1,8 +1,13 @@
+import os
+import sys
+
+from utils.response import Response
+
 import re
 import time
 import hashlib
 from urllib.parse import urlparse, urljoin
-import chardet  # Ensure this is installed: pip install chardet
+import chardet  # Make sure to install via: pip install chardet
 
 # Global settings:
 POLITENESS_DELAY = 1.0         # Minimum time (in seconds) between requests to the same domain
@@ -13,16 +18,16 @@ MIN_TEXT_LENGTH = 100          # Minimum number of text characters for a page to
 last_accessed = {}             # Maps domain names to the last access timestamp
 seen_page_fingerprints = set() # Store fingerprints (e.g., MD5 hashes) of page text to avoid duplicates
 
-def scraper(url: str, resp: "utils.response.Response") -> list:
+def scraper(url: str, resp: Response) -> list:
     """
     Main entry point for the crawler. It extracts and returns links from the page,
-    after processing the page with several heuristics to avoid crawler traps.
+    after processing it with several heuristics to avoid crawler traps.
     """
     links = extract_next_links(url, resp)
     # Further filter links, ensuring they also meet validity conditions.
     return [link for link in links if is_valid(link)]
 
-def extract_next_links(url: str, resp: "utils.response.Response") -> list:
+def extract_next_links(url: str, resp: Response) -> list:
     """
     Process the response and extract hyperlinks only if:
       - The request status is 200,
@@ -50,7 +55,7 @@ def extract_next_links(url: str, resp: "utils.response.Response") -> list:
     # --- Check File Size (if header available) ---
     if hasattr(resp.raw_response, "headers"):
         headers = resp.raw_response.headers
-        if "Content-Length" in headers:
+        if 'Content-Length' in headers:
             try:
                 file_size = int(headers["Content-Length"])
                 if file_size > MAX_FILE_SIZE:
