@@ -24,7 +24,7 @@ class Frontier:
             # Start fresh: only the seed URL is in the frontier.
             self.pending.append(self.seed_url)
             self.added_urls.add(self.seed_url)
-            print("[Frontier] Restart requested or no save file found; starting from seed.")
+            print("[FRONTIER] Restart requested or no save file found; starting from seed.")
         else:
             # Attempt to load the frontier from the shelve file.
             try:
@@ -33,13 +33,20 @@ class Frontier:
                     self.completed = db.get("completed", set())
                 # Rebuild the duplicate check set.
                 self.added_urls = set(self.pending) | self.completed
-                print(f"[Frontier] Loaded saved frontier: {len(self.pending)} URLs pending, {len(self.completed)} URLs completed.")
+                print(f"[FRONTIER] Loaded saved frontier: {len(self.pending)} URLs pending, {len(self.completed)} URLs completed.")
             except Exception as e:
                 # If loading fails, fall back to starting from the seed URL.
-                print("[Frontier] Error loading save file:", e)
+                print("[FRONTIER] Error loading save file:", e)
                 self.pending = [self.seed_url]
                 self.completed = set()
                 self.added_urls = {self.seed_url}
+
+        # Print current state for debugging.
+        self.print_state()
+
+    def print_state(self):
+        """Prints a summary of the current frontier state."""
+        print(f"[FRONTIER] Frontier state: {len(self.pending)} URLs pending, {len(self.completed)} URLs completed, total discovered: {len(self.added_urls)}.")
 
     def get_tbd_url(self):
         """
@@ -50,8 +57,10 @@ class Frontier:
         """
         if self.pending:
             url = self.pending.pop(0)
+            print(f"[FRONTIER] Retrieved URL for crawling: {url}")
             return url
         else:
+            print("[FRONTIER] No pending URLs available.")
             return None
 
     def add_url(self, url):
@@ -64,11 +73,12 @@ class Frontier:
         if url not in self.added_urls:
             self.pending.append(url)
             self.added_urls.add(url)
-            # Debug print (or logging if integrated into a proper logging framework)
-            print(f"[Frontier] Added URL: {url}")
+            print(f"[FRONTIER] Added URL: {url}")
         else:
-            # Debug print for duplicates (optional)
-            print(f"[Frontier] Duplicate URL ignored: {url}")
+            print(f"[FRONTIER] Duplicate URL ignored: {url}")
+
+        # Optionally, print updated state after each addition.
+        self.print_state()
 
     def mark_url_complete(self, url):
         """
@@ -78,8 +88,9 @@ class Frontier:
             url (str): The URL that has completed downloading.
         """
         self.completed.add(url)
-        # Debug print for completed URL
-        print(f"[Frontier] Marked as complete: {url}")
+        print(f"[FRONTIER] Marked as complete: {url}")
+        # Optionally, update state.
+        self.print_state()
 
     def save(self):
         """
@@ -90,6 +101,6 @@ class Frontier:
             with shelve.open(self.frontier_file) as db:
                 db["pending"] = self.pending
                 db["completed"] = self.completed
-            print("[Frontier] Frontier successfully saved.")
+            print("[FRONTIER] Frontier successfully saved.")
         except Exception as e:
-            print("[Frontier] Error saving frontier:", e)
+            print("[FRONTIER] Error saving frontier:", e)
