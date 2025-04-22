@@ -1,6 +1,5 @@
 import time
 from threading import Thread
-from scraper import scraper
 from utils.download import download
 
 class Worker(Thread):
