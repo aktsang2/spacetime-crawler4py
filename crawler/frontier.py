@@ -1,106 +1,122 @@
-import shelve
+# frontier.py
 import os
+import shelve
+import time
+import threading
+from urllib.parse import urlparse
+from queue import Queue, Empty
+from utils import get_logger, get_urlhash, normalize
+from scraper import is_valid, hamming_distance
 
-class Frontier:
-    def __init__(self, config, restart):
+class Frontier(object):
+    def __init__(self, config, restart: bool):
         """
-        Initializes the Frontier.
-
-        Args:
-            config: A configuration object (from utils/config.py) that, among other things, contains:
-                    - config.SEED_URL: The starting URL for the crawl.
-            restart (bool): True if the crawler should start from the seed URL, ignoring any saved progress.
+        Initializes the frontier:
+          - Uses a Queue for pending URLs.
+          - Persists URLs in a shelve file with completion status.
+          - Enforces a 500ms delay between requests to the same domain.
+          - Tracks simhash fingerprints to avoid duplicate crawling.
         """
-        self.frontier_file = "frontier.shelve"
+        self.logger = get_logger("FRONTIER")
         self.config = config
-        self.seed_url = config.SEED_URL
+        self.to_be_downloaded = Queue()
+        self.lock = threading.RLock()       # Protect shelve.
+        self.domain_last_access = {}          # For delays per domain.
+        self.domain_lock = threading.Lock()
+        self.simhashes = {}                   # URL hash → simhash.
 
-        # In-memory data structures to manage URLs.
-        self.pending = []       # List used as a FIFO queue of URLs to be crawled.
-        self.completed = set()  # Set of URLs already downloaded.
-        self.added_urls = set() # Set of all URLs that have ever been added (to prevent duplicates).
-
-        if restart or not os.path.exists(self.frontier_file):
-            # Start fresh: only the seed URL is in the frontier.
-            self.pending.append(self.seed_url)
-            self.added_urls.add(self.seed_url)
-            print("[FRONTIER] Restart requested or no save file found; starting from seed.")
+        if not os.path.exists(self.config.save_file) and not restart:
+            self.logger.info(f"Save file {self.config.save_file} not found; starting fresh.")
+        elif os.path.exists(self.config.save_file) and restart:
+            self.logger.info(f"Restart flag enabled; deleting save file {self.config.save_file}.")
+            os.remove(self.config.save_file)
+        self.save = shelve.open(self.config.save_file)
+        if restart:
+            for url in self.config.seed_urls:
+                self.add_url(url)
         else:
-            # Attempt to load the frontier from the shelve file.
-            try:
-                with shelve.open(self.frontier_file) as db:
-                    self.pending = db.get("pending", [])
-                    self.completed = db.get("completed", set())
-                # Rebuild the duplicate check set.
-                self.added_urls = set(self.pending) | self.completed
-                print(f"[FRONTIER] Loaded saved frontier: {len(self.pending)} URLs pending, {len(self.completed)} URLs completed.")
-            except Exception as e:
-                # If loading fails, fall back to starting from the seed URL.
-                print("[FRONTIER] Error loading save file:", e)
-                self.pending = [self.seed_url]
-                self.completed = set()
-                self.added_urls = {self.seed_url}
+            self._parse_save_file()
+            if self.to_be_downloaded.empty():
+                for url in self.config.seed_urls:
+                    self.add_url(url)
 
-        # Print current state for debugging.
-        self.print_state()
-
-    def print_state(self):
-        """Prints a summary of the current frontier state."""
-        print(f"[FRONTIER] Frontier state: {len(self.pending)} URLs pending, {len(self.completed)} URLs completed, total discovered: {len(self.added_urls)}.")
+    def _parse_save_file(self):
+        total = len(self.save)
+        count = 0
+        for key in self.save:
+            url, completed = self.save[key]
+            if not completed and is_valid(url):
+                self.to_be_downloaded.put(url)
+                count += 1
+        self.logger.info(f"Parsed save file: {count} URLs pending out of {total}.")
 
     def get_tbd_url(self):
         """
-        Returns a URL that is yet to be downloaded.
-
-        Returns:
-            A URL string if there is one available, or None if the frontier is empty.
+        Retrieves the next URL to download from the frontier.
+        Ensures a 500ms minimum delay per domain.
         """
-        if self.pending:
-            url = self.pending.pop(0)
-            print(f"[FRONTIER] Retrieved URL for crawling: {url}")
-            return url
-        else:
-            print("[FRONTIER] No pending URLs available.")
-            return None
+        while True:
+            try:
+                url = self.to_be_downloaded.get(timeout=1)
+            except Empty:
+                return None
+
+            domain = urlparse(url).netloc
+            now = time.time()
+            with self.domain_lock:
+                last_access = self.domain_last_access.get(domain, 0)
+                wait_time = 0.5 - (now - last_access)
+                if wait_time > 0:
+                    self.to_be_downloaded.put(url)
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    self.domain_last_access[domain] = time.time()
+                    return url
 
     def add_url(self, url):
         """
-        Adds a URL to the frontier only if it has not been added before.
-        
-        Args:
-            url (str): The URL to add to the frontier.
+        Normalizes and adds a new URL to the frontier if not already processed.
         """
-        if url not in self.added_urls:
-            self.pending.append(url)
-            self.added_urls.add(url)
-            print(f"[FRONTIER] Added URL: {url}")
-        else:
-            print(f"[FRONTIER] Duplicate URL ignored: {url}")
-
-        # Optionally, print updated state after each addition.
-        self.print_state()
+        url = normalize(url)
+        urlhash = get_urlhash(url)
+        with self.lock:
+            if urlhash not in self.save:
+                self.save[urlhash] = (url, False)
+                self.save.sync()
+                self.to_be_downloaded.put(url)
 
     def mark_url_complete(self, url):
         """
-        Marks a URL as completed so it won't be crawled again upon restart.
-        
-        Args:
-            url (str): The URL that has completed downloading.
+        Marks a URL as complete so it won't be reprocessed.
         """
-        self.completed.add(url)
-        print(f"[FRONTIER] Marked as complete: {url}")
-        # Optionally, update state.
-        self.print_state()
+        urlhash = get_urlhash(url)
+        with self.lock:
+            if urlhash not in self.save:
+                self.logger.error(f"URL {url} missing in storage when marking complete.")
+            self.save[urlhash] = (url, True)
+            self.save.sync()
 
-    def save(self):
+    def is_similar(self, new_simhash, threshold=3):
         """
-        Saves the current state of the frontier (pending and completed URLs) to the shelve file.
-        Call this method upon graceful shutdown to persist progress.
+        Checks if the new_simhash is similar to any stored simhash (using Hamming distance).
+        Returns True if a near-duplicate is found.
         """
-        try:
-            with shelve.open(self.frontier_file) as db:
-                db["pending"] = self.pending
-                db["completed"] = self.completed
-            print("[FRONTIER] Frontier successfully saved.")
-        except Exception as e:
-            print("[FRONTIER] Error saving frontier:", e)
+        with self.lock:
+            for sim in self.simhashes.values():
+                if hamming_distance(sim, new_simhash) < threshold:
+                    return True
+        return False
+
+    def add_simhash(self, url, simhash):
+        """
+        Records the simhash fingerprint for the given URL.
+        """
+        with self.lock:
+            urlhash = get_urlhash(url)
+            self.simhashes[urlhash] = simhash
+
+"""
+Code Origin: This code was generated with assistance from Microsoft Copilot.
+For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilot
+"""
