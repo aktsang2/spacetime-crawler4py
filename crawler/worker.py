@@ -1,55 +1,107 @@
-import time
+# worker.py
 from threading import Thread
+from inspect import getsource
 from utils.download import download
+from utils import get_logger
+import scraper
+import time
 
 class Worker(Thread):
     def __init__(self, worker_id, config, frontier):
         """
-        Initialize the worker with a unique id, configuration, and frontier.
-
-        Args:
-            worker_id (int or str): A unique identifier for this worker.
-            config: Config object containing parameters such as time_delay and SEED_URL.
-                    Note: The cache server is already defined in the config.
-            frontier: Frontier object that manages URLs to be downloaded.
+        Initializes a Worker thread.
+          - Verifies scraper.py does not import disallowed libraries.
+          - Stores configuration and the frontier.
         """
-        self.worker_id = worker_id
+        self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         self.config = config
         self.frontier = frontier
-        super().__init__(daemon=True)
+
+        # Ensure scraper.py does not import disallowed libraries.
+        forbidden_requests = {"from requests import", "import requests"}
+        forbidden_urllib = {"from urllib.request import", "import urllib.request"}
+        for req in forbidden_requests:
+            if getsource(scraper).find(req) != -1:
+                raise AssertionError("Disallowed import 'requests' found in scraper.py")
+        for req in forbidden_urllib:
+            if getsource(scraper).find(req) != -1:
+                raise AssertionError("Disallowed import 'urllib.request' found in scraper.py")
+                
+                super().__init__(daemon=True)
 
     def run(self):
         """
-        The main loop of the worker:
-          1. Get one URL from the frontier that has yet to be downloaded.
-          2. Use the download function to retrieve the Web page.
-          3. Process the page with the scraper function to obtain the next URLs.
-          4. Add the extracted URLs back to the frontier.
-          5. Mark the current URL as completed.
-          6. Sleep for the configured politeness delay before processing the next URL.
+        The main loop for the worker:
+          1. Retrieves a URL from the frontier (with per-domain politeness).
+          2. Attempts to download the URL.
+          3. Checks if the response is valid, and that content length is appropriate.
+          4. Processes the page using scraper.scraper().
+          5. Skips duplicate pages based on simhash.
+          6. Adds new valid URLs to the frontier.
+          7. Marks the URL as complete and sleeps for the configured delay.
         """
+        MIN_CONTENT_LENGTH = 200
+        MAX_CONTENT_LENGTH = 5000000
         while True:
-            # Retrieve the next URL to process.
-            url = self.frontier.get_tbd_url()
-            if url is None:
-                print(f"[Worker {self.worker_id}] No more URLs available. Exiting.")
+            tbd_url = self.frontier.get_tbd_url()
+            if not tbd_url:
+                self.logger.info("Frontier is empty. Stopping worker.")
                 break
 
-            print(f"[Worker {self.worker_id}] Processing URL: {url}")
-            
-            # Download the webpage using the provided download function.
-            resp = download(url, self.config)
-            
-            # Extract the next URLs from the downloaded page using the scraper.
-            next_links = scraper(url, resp)
-            print(f"[Worker {self.worker_id}] Found {len(next_links)} new URLs.")
+            try:
+                resp = download(tbd_url, self.config, self.logger)
+                self.logger.info(f"Downloaded {tbd_url} with status {resp.status}.")
+            except Exception as e:
+                self.logger.error(f"Exception downloading {tbd_url}: {e}")
+                self.frontier.mark_url_complete(tbd_url)
+                continue
 
-            # Add each new URL to the frontier.
-            for link in next_links:
-                self.frontier.add_url(link)
+            if not resp or not resp.raw_response:
+                self.logger.error(f"Invalid response received for {tbd_url}.")
+                self.frontier.mark_url_complete(tbd_url)
+                continue
 
-            # Mark the current URL as finally completed.
-            self.frontier.mark_url_complete(url)
+            try:
+                content_length = len(resp.raw_response.content)
+            except Exception as e:
+                self.logger.error(f"Error computing content length for {tbd_url}: {e}")
+                self.frontier.mark_url_complete(tbd_url)
+                continue
+
+            if content_length < MIN_CONTENT_LENGTH:
+                self.logger.info(f"Skipping {tbd_url}: content length ({content_length}) too short.")
+                self.frontier.mark_url_complete(tbd_url)
+                continue
+            if content_length > MAX_CONTENT_LENGTH:
+                self.logger.info(f"Skipping {tbd_url}: content length ({content_length}) exceeds limit.")
+                self.frontier.mark_url_complete(tbd_url)
+                continue
+
+            try:
+                if resp.status == 200:
+                    result = scraper.scraper(tbd_url, resp)
+                    if result and isinstance(result, tuple) and len(result) == 3:
+                        scraped_urls, page_simhash, text_content = result
+                        if self.frontier.is_similar(page_simhash):
+                            self.logger.info(f"Skipping {tbd_url}: near duplicate detected.")
+                            self.frontier.mark_url_complete(tbd_url)
+                            continue
+                        self.frontier.add_simhash(tbd_url, page_simhash)
+                        for extracted_url in scraped_urls:
+                            self.frontier.add_url(extracted_url)
+                    else:
+                        self.logger.info(f"Scraper returned no valid result for {tbd_url}.")
+            except Exception as e:
+                self.logger.error(f"Error during scraping of {tbd_url}: {e}")
             
-            # Sleep according to the configured politeness delay.
+            try:
+                self.frontier.mark_url_complete(tbd_url)
+            except Exception as e:
+                self.logger.error(f"Error marking {tbd_url} complete: {e}")
+            
             time.sleep(self.config.time_delay)
+
+"""
+Code Origin: This code was generated with assistance from crosoft Copilot.
+For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilot
+"""
