@@ -8,11 +8,8 @@ import time
 
 class Worker(Thread):
     def __init__(self, worker_id, config, frontier):
-        """
-        Initializes a Worker thread.
-          - Verifies scraper.py does not import disallowed libraries.
-          - Stores configuration and the frontier.
-        """
+        # Call the parent Thread initializer first to properly set up the thread.
+        Thread.__init__(self, daemon=True)
         self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         self.config = config
         self.frontier = frontier
@@ -26,19 +23,16 @@ class Worker(Thread):
         for req in forbidden_urllib:
             if getsource(scraper).find(req) != -1:
                 raise AssertionError("Disallowed import 'urllib.request' found in scraper.py")
-                
-                super().__init__(daemon=True)
-
+    
     def run(self):
         """
-        The main loop for the worker:
-          1. Retrieves a URL from the frontier (with per-domain politeness).
-          2. Attempts to download the URL.
-          3. Checks if the response is valid, and that content length is appropriate.
-          4. Processes the page using scraper.scraper().
-          5. Skips duplicate pages based on simhash.
-          6. Adds new valid URLs to the frontier.
-          7. Marks the URL as complete and sleeps for the configured delay.
+        Main loop for the Worker:
+          1. Retrieve a URL from the frontier under politeness constraints.
+          2. Download the page using the cache server.
+          3. Check response validity and content length.
+          4. Process the page via scraper and perform duplicate detection.
+          5. Add new URLs to the frontier and mark the current URL as complete.
+          6. Sleep for the configured delay.
         """
         MIN_CONTENT_LENGTH = 200
         MAX_CONTENT_LENGTH = 5000000
@@ -102,6 +96,6 @@ class Worker(Thread):
             time.sleep(self.config.time_delay)
 
 """
-Code Origin: This code was generated with assistance from crosoft Copilot.
-For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilot
+Code Origin: This code was generated with assistance from Microsoft Copilot.
+For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilo
 """
