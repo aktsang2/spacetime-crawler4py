@@ -97,5 +97,5 @@ class Worker(Thread):
 
 """
 Code Origin: This code was generated with assistance from Microsoft Copilot.
-For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilo
+For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilot
 """
