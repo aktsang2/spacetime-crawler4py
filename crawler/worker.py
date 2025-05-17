@@ -8,13 +8,13 @@ import time
 
 class Worker(Thread):
     def __init__(self, worker_id, config, frontier):
-        # Call the parent Thread initializer first to properly set up the thread.
+        # Ensure correct initialization of the Thread base class.
         Thread.__init__(self, daemon=True)
         self.logger = get_logger(f"Worker-{worker_id}", "Worker")
         self.config = config
         self.frontier = frontier
 
-        # Ensure scraper.py does not import disallowed libraries.
+        # Ensure scraper.py does not import disallowed modules.
         forbidden_requests = {"from requests import", "import requests"}
         forbidden_urllib = {"from urllib.request import", "import urllib.request"}
         for req in forbidden_requests:
@@ -23,17 +23,8 @@ class Worker(Thread):
         for req in forbidden_urllib:
             if getsource(scraper).find(req) != -1:
                 raise AssertionError("Disallowed import 'urllib.request' found in scraper.py")
-    
+                
     def run(self):
-        """
-        Main loop for the Worker:
-          1. Retrieve a URL from the frontier under politeness constraints.
-          2. Download the page using the cache server.
-          3. Check response validity and content length.
-          4. Process the page via scraper and perform duplicate detection.
-          5. Add new URLs to the frontier and mark the current URL as complete.
-          6. Sleep for the configured delay.
-        """
         MIN_CONTENT_LENGTH = 200
         MAX_CONTENT_LENGTH = 5000000
         while True:
@@ -99,3 +90,4 @@ class Worker(Thread):
 Code Origin: This code was generated with assistance from Microsoft Copilot.
 For more details, visit: https://www.microsoft.com/en-us/microsoft-365/copilot
 """
+
